@@ -1,0 +1,1592 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Coin Change State Space Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: a two-column workbench. Setup on the left, the state space graph as the hero on the right,
+   live numbers and the trace beneath, comparison and notes at the foot. */
+:root {
+  --bg: #0b0f19;
+  --card: #131c2e;
+  --inset: #0e1524;
+  --line: #223050;
+  --line-soft: #19243b;
+  --fg: #e6ecf7;
+  --muted: #94a4c2;
+  --faint: #7586a8;
+  --blue: #3b82f6;
+  --blue-hi: #93c5fd;
+  --blue-dim: rgba(59, 130, 246, 0.16);
+  --blue-btn: #2563eb;
+  --green: #10b981;
+  --green-hi: #6ee7b7;
+  --green-dim: rgba(16, 185, 129, 0.13);
+  --visited: #3b4c61;
+  --visited-line: #62758f;
+  --rose: #fb7185;
+  --rose-dim: rgba(251, 113, 133, 0.12);
+  --amber: #fbbf24;
+  --amber-dim: rgba(251, 191, 36, 0.12);
+  --edge: #5f7292;
+  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+button, input { font-family: inherit; }
+h1, h2, h3, p, ul, ol, dl, dd { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+
+.page {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding-block: 28px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.stack { display: flex; flex-direction: column; gap: 16px; }
+
+/* ---------- header ---------- */
+.hdr { margin-bottom: 22px; }
+.hdr h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(28px, 4.4vw, 44px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.sub { margin-top: 10px; max-width: 62ch; color: var(--muted); font-size: 15px; text-wrap: pretty; }
+.defs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.defs li {
+  font-size: 12.5px; color: var(--muted);
+  border: 1px solid var(--line); background: var(--card);
+  border-radius: 999px; padding: 4px 12px;
+}
+.defs b { color: var(--fg); font-weight: 500; }
+
+/* ---------- cards ---------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  min-width: 0;
+}
+.card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.card-t { font-size: 11.5px; font-weight: 600; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); }
+.mini { font-size: 12px; color: var(--faint); }
+.empty { color: var(--muted); font-size: 13.5px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- form ---------- */
+.setup { display: flex; flex-direction: column; gap: 16px; }
+.field label, .flabel { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); margin-bottom: 7px; }
+.input {
+  width: 100%;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: 500 15px var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input:focus-visible { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+.input.bad { border-color: var(--rose); }
+.help { min-height: 24px; margin-top: 7px; font-size: 12.5px; }
+.err { color: var(--rose); }
+.coinrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.coin {
+  display: inline-grid; place-items: center; min-width: 30px; height: 30px; padding: 0 6px;
+  border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  background: var(--visited); border: 1px solid var(--visited-line);
+  box-shadow: inset 0 0 0 3px var(--card), inset 0 0 0 4px rgba(148, 164, 194, 0.28);
+}
+.note-inline { color: var(--faint); font-size: 12px; margin-left: 4px; }
+
+.seg {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px;
+  background: var(--inset); border: 1px solid var(--line); border-radius: 11px; padding: 3px;
+}
+.seg button {
+  border: 0; background: transparent; color: var(--muted);
+  border-radius: 8px; padding: 7px 10px; font-size: 13px; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.seg button:hover { color: var(--fg); }
+.seg button[aria-checked='true'] { background: var(--blue-dim); color: var(--blue-hi); box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.55); }
+.seg button:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 1px; }
+.algoseg button { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 10px; }
+.algoseg b { font-size: 15px; font-weight: 600; }
+.algoseg small { font-size: 11.5px; opacity: 0.8; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--inset); color: var(--fg);
+  padding: 9px 13px; font-size: 13.5px; font-weight: 500; cursor: pointer; line-height: 1.2;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn:hover:not(:disabled) { border-color: #36497b; background: #16223c; }
+.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 2px; }
+.btn-primary { background: var(--blue-btn); border-color: var(--blue-btn); color: #fff; font-weight: 600; }
+.btn-primary:hover:not(:disabled) { background: #1f56cf; border-color: #1f56cf; }
+.btn-wide { width: 100%; padding: 12px 14px; font-size: 14.5px; }
+.btn-icon { padding: 7px 9px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 8px; }
+.ico { flex: none; }
+.dirty { font-size: 12.5px; color: var(--amber); background: var(--amber-dim); border-radius: 8px; padding: 7px 10px; }
+
+.presets { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line-soft); }
+.plist { display: flex; flex-direction: column; gap: 6px; }
+.preset {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  text-align: left; width: 100%;
+  background: var(--inset); border: 1px solid var(--line-soft); border-radius: 10px;
+  padding: 9px 12px; color: var(--fg); cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.preset:hover { border-color: #36497b; }
+.preset:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 2px; }
+.preset[aria-pressed='true'] { border-color: rgba(59, 130, 246, 0.7); background: var(--blue-dim); }
+.pname { font-size: 13.5px; font-weight: 500; }
+.pdata { font-size: 11.5px; color: var(--muted); }
+.pnote { margin-top: 12px; font-size: 13px; color: var(--muted); text-wrap: pretty; }
+
+/* ---------- graph ---------- */
+.graph-h { margin-bottom: 12px; }
+.tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.follow { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.follow input { accent-color: var(--blue); width: 15px; height: 15px; }
+.zoomset { display: inline-flex; gap: 5px; }
+.zoomval { gap: 6px; min-width: 78px; padding: 7px 10px; font-size: 12px; }
+
+.canvas {
+  display: flex;
+  height: clamp(380px, 58vh, 620px);
+  overflow: auto;
+  padding: 10px;
+  background-color: var(--inset);
+  background-image: radial-gradient(var(--line-soft) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.canvas:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 2px; }
+.graph { margin: auto; display: block; flex: none; overflow: visible; }
+
+.guide line { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 6; opacity: 0.8; }
+.guide text { fill: var(--faint); font: 500 10.5px var(--font-mono); }
+
+.edge line { fill: none; stroke-linecap: round; }
+.edge.pending line { stroke: var(--edge); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.edge.done line { stroke: var(--edge); stroke-width: 1.5; }
+.edge.replaced line { stroke: var(--edge); stroke-width: 1.2; stroke-dasharray: 2 4; opacity: 0.35; }
+.edge.active line { stroke: #60a5fa; stroke-width: 2.4; }
+.edge.solution line { stroke: #34d399; stroke-width: 2.8; }
+.mk path { fill: var(--edge); }
+.mk.active path { fill: #60a5fa; }
+.mk.solution path { fill: #34d399; }
+.mk.replaced path { fill: var(--edge); opacity: 0.35; }
+.elabel { font: 500 10.5px var(--font-mono); fill: #9fb0cf; stroke: #0e1524; stroke-width: 4px; }
+.edge.active .elabel { fill: var(--blue-hi); }
+.edge.solution .elabel { fill: var(--green-hi); }
+.edge.replaced .elabel { opacity: 0.4; }
+
+.gnode .body { fill: var(--visited); stroke: var(--visited-line); stroke-width: 1.6; }
+.gnode .ring { fill: none; stroke: #c3d0e6; stroke-opacity: 0.2; stroke-width: 1; }
+.gnode .amt { fill: var(--fg); font: 600 12.5px var(--font-mono); }
+.gnode .amt.small { font-size: 10.5px; }
+.gnode .flab { fill: var(--muted); font: 500 10px var(--font-mono); }
+.gnode .halo { fill: none; stroke: var(--blue); stroke-width: 2; opacity: 0.4; animation: halo 1.5s ease-in-out infinite; }
+.gnode.goal .halo { stroke: var(--green); }
+.gnode.current .body { fill: var(--blue); stroke: #bfdbfe; stroke-width: 2; }
+.gnode.current .ring { stroke: #fff; stroke-opacity: 0.35; }
+.gnode.goal .body { fill: var(--green); stroke: #a7f3d0; stroke-width: 2; }
+.gnode.goal .ring { stroke: #fff; stroke-opacity: 0.4; }
+.gnode.goal .amt, .gnode.current .amt { fill: #fff; }
+.gnode.frontier .body { fill: var(--inset); stroke: #8fa0bf; stroke-dasharray: 3.5 3; }
+.gnode.replaced { opacity: 0.38; }
+.gnode.replaced .body { fill: var(--inset); stroke: var(--edge); stroke-dasharray: 2 3; }
+.gnode.visited.onsol .body, .gnode.onsol:not(.goal):not(.current) .body { stroke: #34d399; stroke-width: 2.4; }
+.gnode.clickable { cursor: pointer; }
+.gnode.clickable:hover .body { stroke: #fff; }
+.gin { transform-box: fill-box; transform-origin: center; }
+.gin.is-new { animation: pop 0.42s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
+
+@keyframes pop { from { transform: scale(0.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes halo { 0%, 100% { opacity: 0.18; } 50% { opacity: 0.6; } }
+
+.idle { align-items: center; justify-content: center; }
+.idlebox { margin: auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); padding: 24px; }
+.idle-body { fill: var(--inset); stroke: #8fa0bf; stroke-width: 1.6; stroke-dasharray: 4 3.5; }
+.idle-ring { fill: none; stroke: #c3d0e6; stroke-opacity: 0.2; }
+.idle-amt { fill: var(--fg); font: 600 15px var(--font-mono); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.legend li { display: inline-flex; align-items: center; gap: 7px; }
+.lg-note { color: var(--faint); margin-left: auto; font-size: 11.5px; }
+.sw { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid; }
+.sw.current { background: var(--blue); border-color: #bfdbfe; }
+.sw.goal { background: var(--green); border-color: #a7f3d0; }
+.sw.visited { background: var(--visited); border-color: var(--visited-line); }
+.sw.frontier { background: var(--inset); border-color: #8fa0bf; border-style: dashed; }
+.sw.replaced { background: var(--inset); border-color: #8fa0bf; border-style: dotted; opacity: 0.7; }
+.ln { display: inline-block; width: 22px; height: 0; border-top: 2px solid var(--edge); }
+.ln.dashed { border-top-style: dashed; }
+
+/* ---------- status + controls ---------- */
+.status {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin-top: 14px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--inset); font-size: 13.5px;
+}
+.status .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-top: 7px; background: var(--blue); }
+.stepcount { color: var(--faint); font-size: 12px; margin-right: 6px; white-space: pre; }
+.status[data-tone='good'] { border-color: rgba(16, 185, 129, 0.5); background: var(--green-dim); color: var(--green-hi); }
+.status[data-tone='good'] .dot { background: var(--green); }
+.status[data-tone='good'] .stepcount { color: rgba(110, 231, 183, 0.7); }
+.status[data-tone='bad'] { border-color: rgba(251, 113, 133, 0.5); background: var(--rose-dim); color: #fecdd3; }
+.status[data-tone='bad'] .dot { background: var(--rose); }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 14px; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.speedset { display: flex; align-items: center; gap: 8px; }
+.speedset .seg button { padding: 6px 10px; font-family: var(--font-mono); font-size: 12.5px; }
+.scrub { display: flex; align-items: center; gap: 10px; flex: 1 1 100%; }
+.scrub input[type='range'] { flex: 1; min-width: 0; accent-color: var(--blue); height: 24px; }
+.scrub input[type='range']:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 3px; border-radius: 6px; }
+.stepnum { font-size: 12.5px; color: var(--muted); min-width: 64px; text-align: right; }
+
+/* ---------- stats and active state ---------- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tile { background: var(--inset); border: 1px solid var(--line-soft); border-radius: 11px; padding: 12px 12px 11px; min-width: 0; }
+.tile b { display: block; font: 700 30px/1.05 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.tile b small { font: 500 13px var(--font-body); color: var(--muted); letter-spacing: 0; }
+.tile span { display: block; margin-top: 5px; font-size: 12px; color: var(--muted); }
+
+.activehead { display: flex; gap: 16px; align-items: center; }
+.bigamt {
+  flex: none; display: grid; place-items: center; min-width: 78px; height: 78px; padding: 0 10px; border-radius: 50%;
+  background: var(--blue); border: 2px solid #bfdbfe; color: #fff;
+  font: 700 28px var(--font-display); font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 5px var(--card), inset 0 0 0 6px rgba(255, 255, 255, 0.25);
+}
+.kv { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.kv > div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { font-weight: 500; }
+.formula { margin-top: 12px; font-size: 12px; color: var(--muted); background: var(--inset); border-radius: 8px; padding: 7px 10px; overflow-wrap: anywhere; }
+.pathrow { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 14px; }
+.pstate { display: inline-grid; place-items: center; min-width: 30px; height: 28px; padding: 0 7px; border-radius: 999px; font-size: 12px; background: var(--visited); border: 1px solid var(--visited-line); }
+.pstate.last { background: var(--blue); border-color: #bfdbfe; color: #fff; }
+.hop { font-size: 11.5px; color: var(--blue-hi); }
+.sum { margin-top: 10px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* ---------- frontier ---------- */
+.fchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fchip {
+  display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; border-radius: 999px;
+  border: 1px dashed #8fa0bf; background: var(--inset); font-size: 12.5px;
+}
+.fchip em { font-style: normal; font-size: 10.5px; color: var(--muted); }
+.fchip.next { border-style: solid; border-color: var(--blue); background: var(--blue-dim); color: var(--blue-hi); }
+.fmore { align-self: center; color: var(--muted); font-size: 12px; padding: 0 6px; }
+
+/* ---------- log ---------- */
+.log {
+  max-height: 380px; overflow: auto; background: var(--inset);
+  border: 1px solid var(--line-soft); border-radius: 11px; padding: 6px 4px;
+}
+.log:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 2px; }
+.log .empty { padding: 12px; }
+.logstep { padding: 8px 10px 8px 12px; border-left: 2px solid transparent; }
+.logstep.latest { border-left-color: var(--blue); background: rgba(59, 130, 246, 0.06); }
+.logh {
+  display: flex; align-items: baseline; gap: 10px; background: none; border: 0; padding: 2px 0; margin-bottom: 3px;
+  color: var(--fg); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left;
+}
+.logh .mono { font-size: 11.5px; font-weight: 500; color: var(--faint); }
+.logh:hover span:last-child { text-decoration: underline; text-underline-offset: 3px; }
+.logh:focus-visible { outline: 2px solid var(--blue-hi); outline-offset: 2px; border-radius: 4px; }
+.logstep ul { display: flex; flex-direction: column; gap: 2px; }
+.logstep li { font: 400 12.5px/1.5 var(--font-mono); padding-left: 10px; border-left: 2px solid var(--line); color: var(--muted); overflow-wrap: anywhere; }
+.logstep li.k-pop { color: var(--blue-hi); border-left-color: var(--blue); }
+.logstep li.k-gen { color: var(--fg); border-left-color: var(--visited-line); }
+.logstep li.k-skip { color: var(--faint); }
+.logstep li.k-goal { color: var(--green-hi); border-left-color: var(--green); }
+.logstep li.k-fail { color: var(--rose); border-left-color: var(--rose); }
+
+/* ---------- comparison ---------- */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 12px; }
+.cmp { width: 100%; border-collapse: collapse; min-width: 0; table-layout: fixed; }
+.cmp th, .cmp td { padding: 11px 14px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line-soft); }
+.cmp tbody tr:last-child th, .cmp tbody tr:last-child td { border-bottom: 0; }
+.cmp tbody th { width: 30%; font-size: 13px; font-weight: 500; color: var(--muted); }
+.cmp td { width: 35%; font-size: 14px; }
+.cmp thead th { background: var(--inset); }
+.cmp thead th.viewing { box-shadow: inset 0 -2px 0 var(--blue); }
+.thin { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.thname { font: 700 18px var(--font-display); }
+.thsub { font-size: 12px; font-weight: 400; color: var(--muted); }
+.pill { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--blue-hi); background: var(--blue-dim); border-radius: 999px; padding: 2px 9px; }
+.cellv { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.cmp td.wrapcell .cellv span { overflow-wrap: anywhere; }
+.cmp td.ok { color: var(--green-hi); }
+.cmp td.no { color: var(--rose); }
+.besttag { font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--green-hi); background: var(--green-dim); border-radius: 999px; padding: 1px 8px; }
+.bar { height: 5px; margin-top: 8px; border-radius: 3px; background: var(--line-soft); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 3px; background: var(--visited-line); }
+.cmp td.best .bar i { background: var(--green); }
+.insight { margin-top: 16px; font-size: 14.5px; max-width: 78ch; text-wrap: pretty; }
+.foot { margin-top: 8px; font-size: 12px; color: var(--faint); max-width: 78ch; }
+
+/* ---------- explainer ---------- */
+.explain { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.explain p { font-size: 13.5px; color: var(--muted); text-wrap: pretty; }
+.explain .formula { color: var(--fg); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 900px) {
+  .explain { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .card { padding: 14px; }
+  .btn .lbl { display: none; }
+  .btnrow .btn { padding: 10px 14px; }
+  .lg-note { margin-left: 0; }
+  .activehead { flex-direction: column; align-items: flex-start; }
+  .tile b { font-size: 26px; }
+  .cmp th, .cmp td { padding: 9px 8px; }
+  .cmp tbody th { width: 27%; font-size: 12px; }
+  .cmp td { font-size: 13px; }
+  .thsub { display: none; }
+  .canvas { height: clamp(340px, 54vh, 460px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gin.is-new, .gnode .halo { animation: none; }
+  * { transition: none !important; }
+}
+
+</style>
+
+<div id="root"><p id="boot" style="padding:24px;color:#94a4c2;font:14px system-ui,sans-serif">Compiling the explorer...</p></div>
+
+<!-- Stack: Tailwind CSS, React 18 (UMD), Babel Standalone for JSX -->
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"></script>
+
+<script>
+/* ------------------------------------------------------------------
+   Coin Change search engine.
+   State S = accumulated amount. Start S = 0. Goal S = target.
+   Transition: S -> S + coin, allowed only while S + coin <= target.
+   Every call records a full trace (one step per expanded state) so the
+   interface can replay, step forward and step back without re-running.
+------------------------------------------------------------------- */
+(function (root) {
+  'use strict';
+
+  var now = (typeof performance !== 'undefined' && performance.now)
+    ? function () { return performance.now(); }
+    : function () { return Date.now(); };
+
+  function heuristic(amount, target, maxCoin) {
+    return Math.ceil((target - amount) / maxCoin);
+  }
+
+  function plus(coin) { return '+' + coin; }
+
+  /** One complete search run (BFS or A*) with a recorded trace. */
+  function runSearch(algo, coinsIn, target) {
+    var coins = coinsIn.slice().sort(function (a, b) { return a - b; });
+    var isAstar = algo === 'astar';
+    var maxCoin = coins[coins.length - 1];
+    var t0 = now();
+
+    var nodes = [];
+    var steps = [];
+    var active = new Map();      // amount -> live node (in frontier or expanded)
+    var closed = new Set();      // amounts already expanded
+    var queue = [];              // BFS queue (ids), consumed via head
+    var head = 0;
+    var open = [];               // A* open list (ids)
+    var generated = 0, expanded = 0, maxFrontier = 0, pruned = 0;
+
+    function frontierSize() { return isAstar ? open.length : queue.length - head; }
+
+    function cmp(a, b) {
+      var na = nodes[a], nb = nodes[b];
+      if (na.f !== nb.f) return na.f - nb.f;
+      if (na.h !== nb.h) return na.h - nb.h;
+      return na.id - nb.id;
+    }
+
+    function frontierSnapshot() {
+      if (!isAstar) return queue.slice(head);
+      return open.slice().sort(cmp);
+    }
+
+    function makeNode(amount, parentId, coin, stepIndex) {
+      var parent = parentId >= 0 ? nodes[parentId] : null;
+      var g = parent ? parent.g + 1 : 0;
+      var h = heuristic(amount, target, maxCoin);
+      var node = {
+        id: nodes.length, amount: amount, parent: parentId, coin: coin,
+        g: g, h: h, f: g + h, depth: g,
+        createdStep: stepIndex, expandedStep: -1, replacedStep: -1
+      };
+      nodes.push(node);
+      generated++;
+      return node;
+    }
+
+    function push(node) {
+      if (isAstar) open.push(node.id); else queue.push(node.id);
+      active.set(node.amount, node);
+      var size = frontierSize();
+      if (size > maxFrontier) maxFrontier = size;
+    }
+
+    function pathTo(id) {
+      var ids = [];
+      for (var c = id; c >= 0; c = nodes[c].parent) ids.push(c);
+      return ids.reverse();
+    }
+
+    function record(index, current, created, replaced, logs, flags) {
+      steps.push({
+        index: index,
+        current: current,
+        created: created,
+        replaced: replaced,
+        frontier: frontierSnapshot(),
+        stats: { generated: generated, expanded: expanded, maxFrontier: maxFrontier, pruned: pruned },
+        tMs: now() - t0,
+        logs: logs,
+        done: !!(flags && flags.done),
+        found: !!(flags && flags.found)
+      });
+    }
+
+    // ---- step 0: initial state ------------------------------------
+    var root0 = makeNode(0, -1, 0, 0);
+    push(root0);
+    var initLogs = isAstar
+      ? [{ kind: 'info', text: 'Start at amount 0 with no coins. g = 0, h = ceil((' + target + ' - 0) / ' + maxCoin + ') = ' + root0.h + ', f = g + h = ' + root0.f + '.' },
+         { kind: 'info', text: 'Open list: [0]. The state with the lowest f is expanded first.' }]
+      : [{ kind: 'info', text: 'Start at amount 0 with no coins used.' },
+         { kind: 'info', text: 'Queue: [0]. States leave the queue in the order they entered it.' }];
+    record(0, -1, [root0.id], [], initLogs, null);
+
+    var solutionId = -1;
+    var stepIndex = 0;
+
+    while (frontierSize() > 0) {
+      stepIndex++;
+      var logs = [];
+      var createdIds = [];
+      var replacedIds = [];
+
+      // ---- choose the next state ----------------------------------
+      var curId;
+      if (isAstar) {
+        var best = 0;
+        for (var i = 1; i < open.length; i++) if (cmp(open[i], open[best]) < 0) best = i;
+        curId = open.splice(best, 1)[0];
+      } else {
+        curId = queue[head++];
+      }
+      var cur = nodes[curId];
+      expanded++;
+
+      if (isAstar) {
+        var tiedF = 0, tiedFH = 0;
+        for (var j = 0; j < open.length; j++) {
+          var o = nodes[open[j]];
+          if (o.f === cur.f) { tiedF++; if (o.h === cur.h) tiedFH++; }
+        }
+        var tieNote = '';
+        if (tiedF > 0) tieNote = tiedFH > 0
+          ? ' Ties on f and h: the state generated first wins.'
+          : ' Ties on f: the smaller h wins.';
+        logs.push({ kind: 'pop', text: 'Pop ' + cur.amount + ' (lowest f = ' + cur.f + ', g = ' + cur.g + ', h = ' + cur.h + ').' + tieNote });
+      } else {
+        logs.push({ kind: 'pop', text: 'Dequeue ' + cur.amount + ' (level ' + cur.g + ', ' + cur.g + (cur.g === 1 ? ' coin' : ' coins') + ' used).' });
+      }
+
+      // ---- goal test ------------------------------------------------
+      if (cur.amount === target) {
+        solutionId = cur.id;
+        var coinList = pathTo(cur.id).slice(1).map(function (id) { return nodes[id].coin; });
+        logs.push({ kind: 'goal', text: 'Goal test passed: ' + cur.amount + ' equals the target ' + target + '.' });
+        logs.push({
+          kind: 'goal',
+          text: coinList.length
+            ? 'Solution: ' + coinList.join(' + ') + ' = ' + target + ' using ' + coinList.length + (coinList.length === 1 ? ' coin.' : ' coins.')
+            : 'The start state already equals the target: no coins are needed.'
+        });
+        record(stepIndex, cur.id, [], [], logs, { done: true, found: true });
+        break;
+      }
+
+      if (closed.has(cur.amount)) {
+        logs.push({ kind: 'skip', text: cur.amount + ' was already expanded. Nothing to do.' });
+        record(stepIndex, cur.id, [], [], logs, null);
+        continue;
+      }
+      closed.add(cur.amount);
+      cur.expandedStep = stepIndex;
+      logs.push({ kind: 'info', text: 'Goal test failed: ' + cur.amount + ' is not ' + target + '. Expand it with every coin.' });
+
+      // ---- generate successors -------------------------------------
+      for (var k = 0; k < coins.length; k++) {
+        var coin = coins[k];
+        var next = cur.amount + coin;
+        var tag = plus(coin) + ' gives ' + next;
+
+        if (next > target) {
+          logs.push({ kind: 'skip', text: tag + ': above the target ' + target + ', not allowed.' });
+          continue;
+        }
+
+        var existing = active.get(next);
+        var newG = cur.g + 1;
+
+        if (closed.has(next)) {
+          pruned++;
+          logs.push({ kind: 'skip', text: tag + ': already expanded, pruned.' });
+          continue;
+        }
+
+        if (existing) {
+          if (!isAstar || existing.g <= newG) {
+            pruned++;
+            logs.push({ kind: 'skip', text: tag + ': already ' + (isAstar ? 'in the open list with g = ' + existing.g : 'discovered') + ', pruned.' });
+            continue;
+          }
+          // A*: a cheaper route to a state that is still waiting
+          var at = open.indexOf(existing.id);
+          if (at >= 0) open.splice(at, 1);
+          existing.replacedStep = stepIndex;
+          replacedIds.push(existing.id);
+          var better = makeNode(next, cur.id, coin, stepIndex);
+          push(better);
+          createdIds.push(better.id);
+          logs.push({ kind: 'gen', text: tag + ': cheaper route found (g ' + existing.g + ' to ' + better.g + '). Replace the older entry. f = ' + better.g + ' + ' + better.h + ' = ' + better.f + '.' });
+          continue;
+        }
+
+        var child = makeNode(next, cur.id, coin, stepIndex);
+        push(child);
+        createdIds.push(child.id);
+        logs.push({
+          kind: 'gen',
+          text: isAstar
+            ? tag + ': add to the open list. g = ' + child.g + ', h = ' + child.h + ', f = ' + child.f + '.'
+            : tag + ': enqueue at level ' + child.g + '.'
+        });
+      }
+
+      if (!createdIds.length) logs.push({ kind: 'info', text: 'No new states from ' + cur.amount + '.' });
+      logs.push({ kind: 'info', text: (isAstar ? 'Open list' : 'Queue') + ' size: ' + frontierSize() + '.' });
+      record(stepIndex, cur.id, createdIds, replacedIds, logs, null);
+    }
+
+    // ---- exhausted without reaching the goal -------------------------
+    if (solutionId < 0) {
+      stepIndex++;
+      record(stepIndex, -1, [], [], [
+        { kind: 'fail', text: 'The ' + (isAstar ? 'open list' : 'queue') + ' is empty. No combination of these coins adds up to ' + target + '.' },
+        { kind: 'fail', text: 'Every reachable state was explored: ' + expanded + ' expanded, ' + generated + ' generated.' }
+      ], { done: true, found: false });
+    }
+
+    var solution = null;
+    if (solutionId >= 0) {
+      var ids = pathTo(solutionId);
+      solution = {
+        pathIds: ids,
+        coins: ids.slice(1).map(function (id) { return nodes[id].coin; }),
+        count: ids.length - 1
+      };
+    }
+
+    // ---- tree layout (stable across all steps) ----------------------
+    var layout = layoutTree(nodes);
+
+    var last = steps[steps.length - 1];
+    return {
+      algo: algo,
+      coins: coins,
+      target: target,
+      maxCoin: maxCoin,
+      nodes: nodes,
+      steps: steps,
+      solution: solution,
+      found: solutionId >= 0,
+      layout: layout,
+      totalMs: last.tMs,
+      totals: {
+        generated: generated, expanded: expanded, maxFrontier: maxFrontier,
+        pruned: pruned, steps: steps.length - 1
+      }
+    };
+  }
+
+  /** Leaves get sequential slots; parents sit above the middle of their children. */
+  function layoutTree(nodes) {
+    var children = nodes.map(function () { return []; });
+    nodes.forEach(function (n) { if (n.parent >= 0) children[n.parent].push(n.id); });
+    var x = new Array(nodes.length).fill(0);
+    var slot = 0;
+    var stack = [[0, 0]];  // [id, child cursor]
+    while (stack.length) {
+      var top = stack[stack.length - 1];
+      var id = top[0], kids = children[id];
+      if (top[1] < kids.length) {
+        stack.push([kids[top[1]++], 0]);
+      } else {
+        x[id] = kids.length === 0 ? slot++ : (x[kids[0]] + x[kids[kids.length - 1]]) / 2;
+        stack.pop();
+      }
+    }
+    var maxDepth = 0;
+    nodes.forEach(function (n) { if (n.depth > maxDepth) maxDepth = n.depth; });
+    return { x: x, slots: Math.max(slot, 1), maxDepth: maxDepth };
+  }
+
+  /**
+   * Timing: the browser clock is coarse (often 0.1 ms or worse), and one small search takes far less.
+   * So the search is repeated in a loop and averaged. The per-step times shown while replaying are that
+   * average spread over the steps in proportion to the work done (states generated plus expanded).
+   */
+  function timedSearch(algo, coins, target) {
+    var result = runSearch(algo, coins, target); // warm-up, and the trace we keep
+    var reps = 0, t0 = now(), elapsed = 0;
+    while (reps < 4000 && (elapsed < 12 || reps < 5)) {
+      runSearch(algo, coins, target);
+      reps++;
+      elapsed = now() - t0;
+    }
+    var avg = elapsed / reps;
+    var work = function (s) { return s.stats.generated + s.stats.expanded; };
+    var total = work(result.steps[result.steps.length - 1]);
+    result.steps.forEach(function (s) { s.tMs = avg * (work(s) / total); });
+    result.totalMs = avg;
+    result.timingRuns = reps;
+    return result;
+  }
+
+  /** Reference answer by dynamic programming, used by the self-check and tests. */
+  function minCoinsDP(coins, target) {
+    var INF = Infinity, dp = new Array(target + 1).fill(INF);
+    dp[0] = 0;
+    for (var s = 1; s <= target; s++)
+      for (var i = 0; i < coins.length; i++)
+        if (coins[i] <= s && dp[s - coins[i]] + 1 < dp[s]) dp[s] = dp[s - coins[i]] + 1;
+    return dp[target] === INF ? -1 : dp[target];
+  }
+
+  /** Validates the two text fields. Returns { ok, coins, target, errors, notes }. */
+  function parseInputs(coinsText, targetText) {
+    var errors = {}, notes = [];
+    var coins = [];
+    var parts = String(coinsText).split(/[\s,;]+/).filter(Boolean);
+    if (!parts.length) {
+      errors.coins = 'Enter at least one coin value, for example 1, 5, 10, 25.';
+    } else {
+      var bad = parts.filter(function (p) { return !/^\d+$/.test(p) || Number(p) < 1; });
+      if (bad.length) errors.coins = 'Coin values must be whole numbers of 1 or more, separated by commas.';
+      else {
+        coins = parts.map(Number);
+        if (coins.some(function (c) { return c > 1000; })) errors.coins = 'Keep each coin value at 1000 or below.';
+        var uniq = Array.from(new Set(coins)).sort(function (a, b) { return a - b; });
+        if (uniq.length !== coins.length) notes.push('Repeated coin values were merged.');
+        coins = uniq;
+        if (!errors.coins && coins.length > 8) errors.coins = 'Use at most 8 different coin values.';
+      }
+    }
+    var target = NaN;
+    var tt = String(targetText).trim();
+    if (!tt) errors.target = 'Enter a target amount.';
+    else if (!/^\d+$/.test(tt)) errors.target = 'The target must be a whole number of 0 or more.';
+    else {
+      target = Number(tt);
+      if (target > 500) errors.target = 'Keep the target at 500 or below so the graph stays readable.';
+    }
+    var ok = !errors.coins && !errors.target;
+    return { ok: ok, coins: ok ? coins : [], target: ok ? target : NaN, errors: errors, notes: notes };
+  }
+
+  var api = {
+    runSearch: runSearch,
+    timedSearch: timedSearch,
+    minCoinsDP: minCoinsDP,
+    parseInputs: parseInputs,
+    heuristic: heuristic
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.CoinEngine = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef, useCallback, memo } = React;
+const Engine = window.CoinEngine;
+
+/* ------------------------------------------------------------------
+   Presets
+------------------------------------------------------------------- */
+const PRESETS = [
+  { id: 'simple', name: 'Simple Example', coins: [1, 5, 10, 25], target: 30,
+    note: 'The textbook case. 5 + 25 reaches 30 in two coins, and both searches find it.' },
+  { id: 'greedy', name: 'Greedy Trap', coins: [1, 3, 4], target: 6,
+    note: 'Always taking the biggest coin gives 4 + 1 + 1, which is 3 coins. Searching the state space finds 3 + 3 with only 2.' },
+  { id: 'larger', name: 'Larger Target', coins: [1, 5, 12, 25], target: 64,
+    note: 'A bigger state space with an awkward coin value. Compare how many states each algorithm has to expand.' },
+  { id: 'unreachable', name: 'Unreachable', coins: [5, 10], target: 33,
+    note: 'Every sum is a multiple of 5, so 33 can never be built. The search must exhaust every reachable state to be sure.' },
+  { id: 'zero', name: 'Zero Target', coins: [1, 5, 10], target: 0,
+    note: 'The start state already equals the target, so the answer is zero coins and the search ends immediately.' }
+];
+
+const ALGOS = {
+  bfs: { id: 'bfs', short: 'BFS', long: 'Breadth-first search', sub: 'level by level', frontier: 'Queue', frontierHint: 'front first' },
+  astar: { id: 'astar', short: 'A*', long: 'Heuristic search', sub: 'f = g + h', frontier: 'Open list', frontierHint: 'next to pop first' }
+};
+
+const SPEEDS = [0.5, 1, 2, 4];
+const BASE_DELAY = 950;
+const ZOOMS = [1, 1.5, 2, 3, 4, 6, 8];
+
+/* ------------------------------------------------------------------
+   Small helpers
+------------------------------------------------------------------- */
+let sessionCounter = 0;
+function buildSession(coins, target) {
+  return {
+    id: ++sessionCounter,
+    coins: coins.slice(),
+    target: target,
+    bfs: Engine.timedSearch('bfs', coins, target),
+    astar: Engine.timedSearch('astar', coins, target)
+  };
+}
+
+function fmtMs(ms) {
+  if (ms >= 100) return ms.toFixed(0);
+  if (ms >= 10) return ms.toFixed(1);
+  if (ms >= 1) return ms.toFixed(2);
+  return ms.toFixed(3);
+}
+
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+function pathIdsTo(nodes, id) {
+  const ids = [];
+  for (let c = id; c >= 0; c = nodes[c].parent) ids.push(c);
+  return ids.reverse();
+}
+
+function stepTitle(run, S) {
+  if (S.index === 0) return 'Start';
+  if (S.done && S.found) return 'Goal';
+  if (S.done) return 'Finished';
+  return 'Expand ' + run.nodes[S.current].amount;
+}
+
+function statusFor(run, S) {
+  if (S.done && S.found) {
+    const sol = run.solution;
+    return sol.count
+      ? { tone: 'good', text: 'Goal reached: ' + sol.coins.join(' + ') + ' = ' + run.target + ' using ' + plural(sol.count, 'coin', 'coins') + '.' }
+      : { tone: 'good', text: 'Goal reached at the start state. Zero coins are needed.' };
+  }
+  if (S.done) return { tone: 'bad', text: 'No solution. ' + run.target + ' cannot be built from ' + run.coins.join(', ') + '.' };
+  const place = run.algo === 'bfs' ? 'queue' : 'open list';
+  if (S.index === 0) return { tone: 'info', text: 'Ready. The start state 0 is waiting in the ' + place + '.' };
+  const cur = run.nodes[S.current];
+  return { tone: 'info', text: 'Expanding ' + cur.amount + ': ' + plural(S.created.length, 'new state', 'new states') + ' generated.' };
+}
+
+/* ------------------------------------------------------------------
+   Icons
+------------------------------------------------------------------- */
+const ICON_PATHS = {
+  play: 'M8 5v14l11-7z',
+  pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
+  next: 'M6 6l8.5 6L6 18V6zM16 6h2v12h-2z',
+  prev: 'M18 18l-8.5-6L18 6v12zM6 6h2v12H6z',
+  replay: 'M12 5V2L7 6.5 12 11V8a5 5 0 11-5 5H5a7 7 0 107-8z',
+  reset: 'M7 7h10v10H7z',
+  plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
+  minus: 'M5 11h14v2H5z',
+  fit: 'M4 9V4h5v2H6v3H4zM18 9V6h-3V4h5v5h-2zM4 15h2v3h3v2H4v-5zM18 18v-3h2v5h-5v-2h3z',
+  bolt: 'M13 2L5 14h6l-1 8 8-12h-6l1-8z'
+};
+function Icon({ name }) {
+  return (
+    <svg className="ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d={ICON_PATHS[name]} fill="currentColor" />
+    </svg>
+  );
+}
+
+function Card({ title, right, children, className }) {
+  return (
+    <section className={'card ' + (className || '')}>
+      {(title || right) && (
+        <div className="card-h">
+          <h2 className="card-t">{title}</h2>
+          {right}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+/* ------------------------------------------------------------------
+   State space graph
+------------------------------------------------------------------- */
+const SLOT = 52, LEVEL = 88, PAD = 36, LEFT = 80, R = 17;
+
+function GraphPanel({ run, stepIdx, onJump, algo }) {
+  const wrap = useRef(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [zoomIdx, setZoomIdx] = useState(0);
+  const [follow, setFollow] = useState(true);
+  const autoZoomed = useRef(false);
+  const S = run.steps[stepIdx];
+  const L = run.layout;
+  const nodes = run.nodes;
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const measure = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const vb = useMemo(() => ({
+    minX: -LEFT,
+    minY: -PAD,
+    w: LEFT + (L.slots - 1) * SLOT + PAD,
+    h: L.maxDepth * LEVEL + PAD * 2 + 18
+  }), [L]);
+
+  const fit = size.w ? Math.min((size.w - 20) / vb.w, (size.h - 20) / vb.h, 1.35) : 1;
+
+  // Wide trees open zoomed far enough to read the numbers.
+  useEffect(() => {
+    if (autoZoomed.current || !size.w) return;
+    autoZoomed.current = true;
+    if (fit < 0.45) {
+      let idx = 0;
+      while (idx < ZOOMS.length - 1 && fit * ZOOMS[idx] < 0.55) idx++;
+      setZoomIdx(idx);
+    }
+  }, [size.w, fit]);
+
+  const zoom = ZOOMS[zoomIdx];
+  const scale = fit * zoom;
+  const svgW = Math.round(vb.w * scale);
+  const svgH = Math.round(vb.h * scale);
+
+  // Follow the active state when the graph is larger than its window.
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el || !follow) return;
+    if (el.scrollWidth <= el.clientWidth + 2 && el.scrollHeight <= el.clientHeight + 2) return;
+    const id = S.current >= 0 ? S.current : 0;
+    const px = (L.x[id] * SLOT - vb.minX) * scale + 10;
+    const py = (nodes[id].depth * LEVEL - vb.minY) * scale + 10;
+    const calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollTo({ left: px - el.clientWidth / 2, top: py - el.clientHeight / 2, behavior: calm ? 'auto' : 'smooth' });
+  }, [stepIdx, follow, zoomIdx, size.w, size.h, run]);
+
+  // Status of every node at this step.
+  const activeSet = useMemo(() => new Set(S.current >= 0 ? pathIdsTo(nodes, S.current) : []), [S, nodes]);
+  const solutionSet = useMemo(() => new Set(S.done && S.found && run.solution ? run.solution.pathIds : []), [S, run]);
+
+  function statusOf(n) {
+    if (n.id === S.current) return S.done && S.found ? 'goal' : 'current';
+    if (n.replacedStep >= 0 && n.replacedStep <= stepIdx) return 'replaced';
+    if (n.expandedStep >= 0 && n.expandedStep <= stepIdx) return 'visited';
+    return 'frontier';
+  }
+
+  const visible = [];
+  let maxVisibleDepth = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].createdStep <= stepIdx) {
+      visible.push(nodes[i]);
+      if (nodes[i].depth > maxVisibleDepth) maxVisibleDepth = nodes[i].depth;
+    }
+  }
+
+  const px = (id) => L.x[id] * SLOT;
+  const py = (id) => nodes[id].depth * LEVEL;
+  const maxX = (L.slots - 1) * SLOT;
+
+  const edges = visible.filter((n) => n.parent >= 0).map((n) => {
+    const st = statusOf(n);
+    let kind = st === 'replaced' ? 'replaced' : st === 'frontier' ? 'pending' : 'done';
+    if (activeSet.has(n.id) && st !== 'replaced') kind = 'active';
+    if (solutionSet.has(n.id)) kind = 'solution';
+    return { n, kind };
+  });
+
+  const showLabels = scale >= 0.42;
+  const showF = algo === 'astar' && scale >= 0.55;
+  const order = { replaced: 0, pending: 1, done: 2, active: 3, solution: 4 };
+  edges.sort((a, b) => order[a.kind] - order[b.kind]);
+
+  function renderEdge(e) {
+    const n = e.n;
+    const x1 = px(n.parent), y1 = py(n.parent), x2 = px(n.id), y2 = py(n.id);
+    const dx = x2 - x1, dy = y2 - y1, len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const ux = dx / len, uy = dy / len;
+    const sx = x1 + ux * (R + 1), sy = y1 + uy * (R + 1);
+    const ex = x2 - ux * (R + 4), ey = y2 - uy * (R + 4);
+    const labelOn = showLabels || e.kind === 'active' || e.kind === 'solution';
+    return (
+      <g key={'e' + n.id} className={'edge ' + e.kind}>
+        <line x1={sx} y1={sy} x2={ex} y2={ey} markerEnd={'url(#arrow-' + e.kind + ')'} />
+        {labelOn && (
+          <text className="elabel" x={(x1 + x2) / 2} y={(y1 + y2) / 2 + 3.5} textAnchor="middle"
+                paintOrder="stroke" strokeLinejoin="round">{'+' + n.coin}</text>
+        )}
+      </g>
+    );
+  }
+
+  const guides = [];
+  for (let d = 0; d <= maxVisibleDepth; d++) {
+    guides.push(
+      <g key={'g' + d} className="guide">
+        <line x1={vb.minX + 6} y1={d * LEVEL} x2={maxX + PAD - 6} y2={d * LEVEL} />
+        <text x={vb.minX + 8} y={d * LEVEL - 8}>{plural(d, 'coin', 'coins')}</text>
+      </g>
+    );
+  }
+
+  const altText = 'State space graph for ' + ALGOS[algo].long + ' at step ' + stepIdx + ' of ' + (run.steps.length - 1) +
+    '. ' + visible.length + ' states generated.';
+
+  return (
+    <div>
+      <div className="card-h graph-h">
+        <h2 className="card-t">State space graph</h2>
+        <div className="tools">
+          <label className="follow">
+            <input type="checkbox" id="follow-active" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
+            <span>Follow active state</span>
+          </label>
+          <div className="zoomset" role="group" aria-label="Zoom">
+            <button type="button" className="btn btn-icon" aria-label="Zoom out" title="Zoom out"
+                    disabled={zoomIdx === 0} onClick={() => setZoomIdx((i) => Math.max(0, i - 1))}><Icon name="minus" /></button>
+            <button type="button" className="btn zoomval" title="Fit the whole graph in view" aria-label="Fit graph to window"
+                    onClick={() => setZoomIdx(0)}><Icon name="fit" /><span className="mono">{Math.round(scale * 100)}%</span></button>
+            <button type="button" className="btn btn-icon" aria-label="Zoom in" title="Zoom in"
+                    disabled={zoomIdx === ZOOMS.length - 1} onClick={() => setZoomIdx((i) => Math.min(ZOOMS.length - 1, i + 1))}><Icon name="plus" /></button>
+          </div>
+        </div>
+      </div>
+
+      <div className="canvas" ref={wrap} tabIndex={0} aria-label="Scrollable state space graph">
+        <svg className="graph" width={svgW} height={svgH}
+             viewBox={vb.minX + ' ' + vb.minY + ' ' + vb.w + ' ' + vb.h} role="img" aria-label={altText}>
+          <defs>
+            {['replaced', 'pending', 'done', 'active', 'solution'].map((k) => (
+              <marker key={k} id={'arrow-' + k} className={'mk ' + k} viewBox="0 0 10 10" refX="8" refY="5"
+                      markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+                <path d="M0,1 L9,5 L0,9 z" />
+              </marker>
+            ))}
+          </defs>
+          {guides}
+          {edges.map(renderEdge)}
+          {visible.map((n) => {
+            const st = statusOf(n);
+            const onSol = solutionSet.has(n.id);
+            const clickable = n.expandedStep >= 0 || n.id === S.current;
+            const label = n.amount >= 100 ? 'small' : '';
+            const tip = 'State ' + n.amount + ': ' + plural(n.g, 'coin', 'coins') + ' used' +
+              (algo === 'astar' ? ' (g = ' + n.g + ', h = ' + n.h + ', f = ' + n.f + ')' : '') +
+              (n.parent >= 0 ? '. Reached from ' + nodes[n.parent].amount + ' with +' + n.coin : '. Start state') +
+              (n.expandedStep >= 0 ? '. Expanded at step ' + n.expandedStep : '');
+            return (
+              <g key={'n' + n.id} transform={'translate(' + px(n.id) + ',' + py(n.id) + ')'}
+                 className={'gnode ' + st + (onSol ? ' onsol' : '') + (clickable ? ' clickable' : '')}
+                 onClick={clickable ? () => onJump(n.expandedStep >= 0 ? n.expandedStep : stepIdx) : undefined}>
+                <title>{tip}</title>
+                <g className={'gin' + (n.createdStep === stepIdx && stepIdx > 0 ? ' is-new' : '')}>
+                  {(st === 'current' || st === 'goal') && <circle className="halo" r={R + 7} />}
+                  <circle className="body" r={R} />
+                  <circle className="ring" r={R - 4.5} />
+                  <text className={'amt ' + label} y="4.4" textAnchor="middle">{n.amount}</text>
+                  {showF && st !== 'replaced' && <text className="flab" y={R + 13} textAnchor="middle">{'f=' + n.f}</text>}
+                </g>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      <ul className="legend" aria-label="Legend">
+        <li><i className="sw current" />Current state</li>
+        <li><i className="sw goal" />Goal state</li>
+        <li><i className="sw visited" />Visited</li>
+        <li><i className="sw frontier" />{ALGOS[algo].frontier === 'Queue' ? 'In queue' : 'In open list'}</li>
+        {algo === 'astar' && <li><i className="sw replaced" />Replaced</li>}
+        <li><i className="ln solid" />Expanded move</li>
+        <li><i className="ln dashed" />Pending move</li>
+        <li className="mono lg-note">+n is the coin added</li>
+      </ul>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   Playback controls
+------------------------------------------------------------------- */
+function Controls({ run, stepIdx, playing, speed, onReset, onBack, onToggle, onForward, onReplay, onSpeed, onScrub }) {
+  const last = run ? run.steps.length - 1 : 0;
+  const atEnd = run && stepIdx >= last;
+  return (
+    <div className="controls">
+      <div className="btnrow" role="group" aria-label="Playback">
+        <button type="button" className="btn" onClick={onReset} title="Clear the run and return to the start">
+          <Icon name="reset" /><span className="lbl">Reset</span>
+        </button>
+        <button type="button" className="btn" onClick={onBack} disabled={!run || stepIdx === 0} aria-label="Step back" title="Step back (Left arrow)">
+          <Icon name="prev" /><span className="lbl">Back</span>
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onToggle} disabled={!run}
+                aria-label={playing ? 'Pause' : 'Play'} title="Play or pause (Space)">
+          <Icon name={playing ? 'pause' : 'play'} /><span className="lbl">{playing ? 'Pause' : atEnd ? 'Play again' : 'Play'}</span>
+        </button>
+        <button type="button" className="btn" onClick={onForward} disabled={!run || atEnd} aria-label="Step forward" title="Step forward (Right arrow)">
+          <Icon name="next" /><span className="lbl">Forward</span>
+        </button>
+        <button type="button" className="btn" onClick={onReplay} disabled={!run} title="Restart this run from step 0 and play">
+          <Icon name="replay" /><span className="lbl">Replay</span>
+        </button>
+      </div>
+
+      <div className="speedset">
+        <span className="mini">Speed</span>
+        <div className="seg" role="radiogroup" aria-label="Playback speed">
+          {SPEEDS.map((s) => (
+            <button key={s} type="button" role="radio" aria-checked={speed === s} onClick={() => onSpeed(s)}>{s + 'x'}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="scrub">
+        <label htmlFor="scrubber" className="mini">Step</label>
+        <input id="scrubber" type="range" min="0" max={last} value={run ? stepIdx : 0} disabled={!run}
+               onChange={(e) => onScrub(Number(e.target.value))} aria-valuetext={'Step ' + stepIdx + ' of ' + last} />
+        <span className="mono stepnum">{(run ? stepIdx : 0) + ' / ' + last}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   Side panels
+------------------------------------------------------------------- */
+function StatsCard({ run, S, algo }) {
+  const st = S ? S.stats : { generated: 0, expanded: 0, maxFrontier: 0, pruned: 0 };
+  const ms = S ? S.tMs : 0;
+  const tiles = [
+    { k: 'Generated states', v: st.generated, tip: 'Every state placed in the ' + (algo === 'astar' ? 'open list' : 'queue') + ', including the start state' },
+    { k: 'Expanded states', v: st.expanded, tip: 'States removed from the frontier and processed' },
+    { k: 'Max frontier size', v: st.maxFrontier, tip: 'Largest number of states waiting at the same time' }
+  ];
+  return (
+    <Card title="Live statistics" right={<span className="mini">{S ? 'at step ' + S.index : 'idle'}</span>}>
+      <div className="tiles">
+        {tiles.map((t) => (
+          <div className="tile" key={t.k} title={t.tip}>
+            <b>{t.v}</b><span>{t.k}</span>
+          </div>
+        ))}
+        <div className="tile" title="Average search time over many runs, spread across the steps in proportion to the work done">
+          <b>{S ? fmtMs(ms) : '0'}<small> ms</small></b><span>Execution time</span>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ActiveCard({ run, S, algo }) {
+  let body;
+  if (!run || !S) {
+    body = <p className="empty">Press Start Search to place the first state.</p>;
+  } else if (S.current < 0 && S.index > 0) {
+    body = <p className="empty">The search is over. There is no active state.</p>;
+  } else {
+    const id = S.current >= 0 ? S.current : 0;
+    const n = run.nodes[id];
+    const ids = pathIdsTo(run.nodes, id);
+    const coins = ids.slice(1).map((i) => run.nodes[i].coin);
+    const remaining = run.target - n.amount;
+    body = (
+      <div>
+        <div className="activehead">
+          <div className="bigamt" aria-label={'Amount ' + n.amount}>{n.amount}</div>
+          <dl className="kv">
+            <div><dt>Target</dt><dd className="mono">{run.target}</dd></div>
+            <div><dt>Remaining</dt><dd className="mono">{remaining}</dd></div>
+            <div><dt>Coins used (g)</dt><dd className="mono">{n.g}</dd></div>
+            {algo === 'astar' && <div><dt>Heuristic (h)</dt><dd className="mono">{n.h}</dd></div>}
+            {algo === 'astar' && <div><dt>Score (f = g + h)</dt><dd className="mono">{n.f}</dd></div>}
+          </dl>
+        </div>
+        {algo === 'astar' && (
+          <p className="formula mono">{'h = ceil((' + run.target + ' - ' + n.amount + ') / ' + run.maxCoin + ') = ' + n.h}</p>
+        )}
+        <div className="pathrow" aria-label="Path from the start state">
+          {ids.map((pid, i) => (
+            <React.Fragment key={pid}>
+              {i > 0 && <span className="hop mono">{'+' + run.nodes[pid].coin}</span>}
+              <span className={'pstate mono' + (i === ids.length - 1 ? ' last' : '')}>{run.nodes[pid].amount}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <p className="sum mono">{coins.length ? coins.join(' + ') + ' = ' + n.amount : 'No coins yet'}</p>
+      </div>
+    );
+  }
+  return <Card title="Active state">{body}</Card>;
+}
+
+function FrontierCard({ run, S, algo }) {
+  const info = ALGOS[algo];
+  const list = S ? S.frontier : [];
+  const MAX = 28;
+  return (
+    <Card title={info.frontier}
+          right={<span className="mini">{S ? plural(list.length, 'state', 'states') + ' waiting, ' + info.frontierHint : info.frontierHint}</span>}>
+      {!S && <p className="empty">Nothing is waiting yet.</p>}
+      {S && list.length === 0 && <p className="empty">{S.done ? 'Empty. The search has finished.' : 'Empty.'}</p>}
+      {S && list.length > 0 && (
+        <ol className="fchips">
+          {list.slice(0, MAX).map((id, i) => {
+            const n = run.nodes[id];
+            return (
+              <li key={id} className={'fchip mono' + (i === 0 ? ' next' : '')}
+                  title={algo === 'astar' ? 'State ' + n.amount + ': g = ' + n.g + ', h = ' + n.h + ', f = ' + n.f : 'State ' + n.amount + ' at level ' + n.g}>
+                <span>{n.amount}</span>
+                {algo === 'astar' && <em>{'f' + n.f}</em>}
+              </li>
+            );
+          })}
+          {list.length > MAX && <li className="fmore mono">{'+' + (list.length - MAX) + ' more'}</li>}
+        </ol>
+      )}
+    </Card>
+  );
+}
+
+const LogStep = memo(function LogStep({ run, S, latest, onJump }) {
+  return (
+    <div className={'logstep' + (latest ? ' latest' : '')}>
+      <button type="button" className="logh" onClick={() => onJump(S.index)} title="Jump to this step">
+        <span className="mono">{'Step ' + S.index}</span>
+        <span>{stepTitle(run, S)}</span>
+      </button>
+      <ul>
+        {S.logs.map((l, i) => <li key={i} className={'k-' + l.kind}>{l.text}</li>)}
+      </ul>
+    </div>
+  );
+});
+
+function LogCard({ run, stepIdx, onJump }) {
+  const box = useRef(null);
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [stepIdx, run]);
+  const shown = run ? run.steps.slice(0, stepIdx + 1) : [];
+  return (
+    <Card title="Execution trace" right={<span className="mini">{run ? 'click a step to jump to it' : ''}</span>}>
+      <div className="log" ref={box} tabIndex={0} aria-label="Execution trace" aria-live="off">
+        {!run && <p className="empty">The step-by-step trace appears here once a search is running.</p>}
+        {shown.map((S) => <LogStep key={S.index} run={run} S={S} latest={S.index === stepIdx} onJump={onJump} />)}
+      </div>
+    </Card>
+  );
+}
+
+/* ------------------------------------------------------------------
+   Comparison
+------------------------------------------------------------------- */
+function Comparison({ session, viewAlgo, onWatch }) {
+  if (!session) {
+    return (
+      <Card title="BFS vs A*, side by side">
+        <p className="empty">Run a search to compare both algorithms on the same coins and target.</p>
+      </Card>
+    );
+  }
+  const b = session.bfs, a = session.astar;
+  const seq = (r) => (!r.found ? 'No solution' : r.solution.count ? r.solution.coins.join(' + ') + ' = ' + r.target : 'Start state is the goal');
+  const num = (key) => ({ b: b.totals[key], a: a.totals[key] });
+  const rows = [
+    { label: 'Result', b: b.found ? 'Goal found' : 'No solution', a: a.found ? 'Goal found' : 'No solution', tone: true },
+    { label: 'Coins in solution', b: b.found ? b.solution.count : '-', a: a.found ? a.solution.count : '-', mono: true },
+    { label: 'Coin sequence', b: seq(b), a: seq(a), mono: true, wrap: true },
+    { label: 'Generated states', ...num('generated'), bar: true, best: true },
+    { label: 'Expanded states', ...num('expanded'), bar: true, best: true },
+    { label: 'Max frontier size', ...num('maxFrontier'), bar: true, best: true },
+    { label: 'Duplicates pruned', ...num('pruned'), mono: true },
+    { label: 'Execution time', b: fmtMs(b.totalMs) + ' ms', a: fmtMs(a.totalMs) + ' ms', mono: true }
+  ];
+
+  let insight;
+  const be = b.totals.expanded, ae = a.totals.expanded;
+  if (!b.found) {
+    insight = 'Neither algorithm can reach ' + session.target + ' with these coins. To be certain, BFS expanded ' + be + ' states and A* expanded ' + ae + '. A heuristic cannot shorten a search that has to prove there is no answer.';
+  } else if (session.target === 0) {
+    insight = 'The start state is already the goal, so both algorithms stop after the first goal test.';
+  } else {
+    const same = b.solution.count === a.solution.count;
+    const head = same
+      ? 'Both found the minimum of ' + plural(b.solution.count, 'coin', 'coins') + '. '
+      : 'The two searches disagree on the coin count, which should never happen. ';
+    if (ae < be) {
+      insight = head + 'A* expanded ' + ae + ' states against ' + be + ' for BFS, ' + Math.round((1 - ae / be) * 100) +
+        '% fewer, because h(n) pulls the search toward the target instead of exploring every level evenly.';
+    } else if (ae === be) {
+      insight = head + 'Both expanded ' + be + ' states on this input, so the heuristic gave A* no head start.';
+    } else {
+      insight = head + 'A* expanded ' + ae + ' states against ' + be + ' for BFS. Here the heuristic gave little guidance, so it did not save any work.';
+    }
+  }
+
+  const cell = (row, who) => {
+    const v = who === 'b' ? row.b : row.a;
+    const other = who === 'b' ? row.a : row.b;
+    const isBest = row.best && typeof v === 'number' && v < other;
+    const mx = row.bar ? Math.max(row.b, row.a, 1) : 1;
+    return (
+      <td className={(row.mono ? 'mono ' : '') + (row.wrap ? 'wrapcell ' : '') + (isBest ? 'best' : '') +
+                     (row.tone ? (v === 'Goal found' ? ' ok' : ' no') : '')}>
+        <div className="cellv"><span>{v}</span>{isBest && <em className="besttag">fewer</em>}</div>
+        {row.bar && <div className="bar"><i style={{ width: Math.max(3, (v / mx) * 100) + '%' }} /></div>}
+      </td>
+    );
+  };
+
+  return (
+    <Card title="BFS vs A*, side by side"
+          right={<span className="mini mono">{'coins ' + session.coins.join(', ') + '  target ' + session.target}</span>}>
+      <div className="tablewrap">
+        <table className="cmp">
+          <thead>
+            <tr>
+              <th scope="col"><span className="sr">Measure</span></th>
+              {['bfs', 'astar'].map((id) => (
+                <th scope="col" key={id} className={viewAlgo === id ? 'viewing' : ''}>
+                  <div className="thin">
+                    <span className="thname">{ALGOS[id].short}</span>
+                    <span className="thsub">{ALGOS[id].long}</span>
+                    {viewAlgo === id
+                      ? <span className="pill">Showing</span>
+                      : <button type="button" className="btn btn-sm" onClick={() => onWatch(id)}>Watch {ALGOS[id].short}</button>}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <th scope="row">{row.label}</th>
+                {cell(row, 'b')}
+                {cell(row, 'a')}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="insight">{insight}</p>
+      <p className="foot">Execution time is the average of many repeated runs and includes recording the step trace. Small differences are noise. The state counts are exact.</p>
+    </Card>
+  );
+}
+
+function Explainer({ session }) {
+  const maxCoin = session ? Math.max.apply(null, session.coins) : 25;
+  const target = session ? session.target : 30;
+  return (
+    <div className="explain">
+      <Card title="State space">
+        <p>A state is the amount collected so far. The search starts at 0 and adds one coin per move. A move is only allowed when the new amount stays at or below the target. Any state equal to the target is a goal, and the cost of a path is the number of coins on it.</p>
+      </Card>
+      <Card title="Breadth-first search">
+        <p>BFS keeps a first-in first-out queue. Every state reachable with k coins is expanded before any state that needs k + 1 coins, so the first goal it removes from the queue uses the fewest coins. Each amount is queued only once.</p>
+      </Card>
+      <Card title="A* search">
+        <p>A* always expands the state with the lowest f(n) = g(n) + h(n). Here g is the coins used so far and h(n) = ceil((target - n) / maxCoin) is the fewest coins that could still be needed. It never overestimates, so the first goal it pops is optimal.</p>
+        <p className="formula mono">{'maxCoin = ' + maxCoin + ',  h(n) = ceil((' + target + ' - n) / ' + maxCoin + ')'}</p>
+      </Card>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------
+   App
+------------------------------------------------------------------- */
+function App() {
+  const first = PRESETS[0];
+  const [coinsText, setCoinsText] = useState(first.coins.join(', '));
+  const [targetText, setTargetText] = useState(String(first.target));
+  const [algo, setAlgo] = useState('bfs');
+  const [session, setSession] = useState(() => buildSession(first.coins, first.target));
+  const [viewAlgo, setViewAlgo] = useState('bfs');
+  const [stepIdx, setStepIdx] = useState(() => session.bfs.steps.length - 1);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
+
+  const parsed = useMemo(() => Engine.parseInputs(coinsText, targetText), [coinsText, targetText]);
+  const run = session ? session[viewAlgo] : null;
+  const S = run ? run.steps[Math.min(stepIdx, run.steps.length - 1)] : null;
+  const last = run ? run.steps.length - 1 : 0;
+
+  const dirty = !!session && (!parsed.ok || parsed.target !== session.target || parsed.coins.join(',') !== session.coins.join(','));
+  const activePreset = PRESETS.find((p) => parsed.ok && p.target === parsed.target && p.coins.join(',') === parsed.coins.join(','));
+
+  // Playback timer: one timeout per step, so a speed change takes effect immediately.
+  useEffect(() => {
+    if (!playing || !run) return;
+    if (stepIdx >= last) { setPlaying(false); return; }
+    const id = setTimeout(() => setStepIdx((s) => Math.min(s + 1, last)), BASE_DELAY / speed);
+    return () => clearTimeout(id);
+  }, [playing, stepIdx, speed, run, last]);
+
+  const begin = (s, which, autoplay) => {
+    setSession(s);
+    setViewAlgo(which);
+    setStepIdx(0);
+    setPlaying(autoplay);
+  };
+
+  const start = () => {
+    if (!parsed.ok) return;
+    setCoinsText(parsed.coins.join(', '));
+    begin(buildSession(parsed.coins, parsed.target), algo, true);
+  };
+
+  const applyPreset = (p) => {
+    setCoinsText(p.coins.join(', '));
+    setTargetText(String(p.target));
+    begin(buildSession(p.coins, p.target), algo, true);
+  };
+
+  const chooseAlgo = (a) => {
+    setAlgo(a);
+    if (session && !dirty && a !== viewAlgo) { setViewAlgo(a); setStepIdx(0); setPlaying(false); }
+  };
+
+  const watch = (a) => { setAlgo(a); setViewAlgo(a); setStepIdx(0); setPlaying(false); };
+  const reset = () => { setSession(null); setPlaying(false); setStepIdx(0); };
+  const replay = () => { if (run) { setStepIdx(0); setPlaying(true); } };
+  const forward = () => { if (run) { setPlaying(false); setStepIdx((s) => Math.min(s + 1, last)); } };
+  const back = () => { if (run) { setPlaying(false); setStepIdx((s) => Math.max(s - 1, 0)); } };
+  const jump = (i) => { setPlaying(false); setStepIdx(Math.max(0, Math.min(i, last))); };
+  const toggle = () => {
+    if (!run) return;
+    if (playing) { setPlaying(false); return; }
+    if (stepIdx >= last) setStepIdx(0);
+    setPlaying(true);
+  };
+
+  // Keyboard: space plays or pauses, arrows step.
+  const keys = useRef({});
+  keys.current = { toggle, forward, back };
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target && e.target.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT|BUTTON/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === ' ') { e.preventDefault(); keys.current.toggle(); }
+      else if (e.key === 'ArrowRight') { keys.current.forward(); }
+      else if (e.key === 'ArrowLeft') { keys.current.back(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const status = run && S ? statusFor(run, S) : { tone: 'info', text: 'Idle. Choose coins and a target, then press Start Search.' };
+  const graphKey = session ? session.id + '-' + viewAlgo : 'idle';
+  const targetShown = session ? session.target : parsed.ok ? parsed.target : '?';
+
+  return (
+    <div className="page">
+      <header className="hdr">
+        <h1>Coin Change State Space Explorer</h1>
+        <p className="sub">Watch breadth-first search and A* work out the fewest coins that add up to a target, one state at a time.</p>
+        <ul className="defs mono" aria-label="State space definition">
+          <li><b>S</b> amount so far</li>
+          <li>start <b>S = 0</b></li>
+          <li>move <b>S to S + coin</b></li>
+          <li>goal <b>{'S = ' + targetShown}</b></li>
+        </ul>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        {/* ---------- setup ---------- */}
+        <div className="lg:col-span-4 min-w-0">
+          <Card title="Problem setup">
+            <form className="setup" onSubmit={(e) => { e.preventDefault(); start(); }} noValidate>
+              <div className="field">
+                <label htmlFor="coins-input">Coin values</label>
+                <input id="coins-input" className={'input' + (parsed.errors.coins ? ' bad' : '')} type="text" inputMode="numeric"
+                       autoComplete="off" spellCheck="false" value={coinsText} onChange={(e) => setCoinsText(e.target.value)}
+                       aria-invalid={!!parsed.errors.coins} aria-describedby="coins-help" placeholder="1, 5, 10, 25" />
+                <div id="coins-help" className="help">
+                  {parsed.errors.coins
+                    ? <span className="err" role="alert">{parsed.errors.coins}</span>
+                    : (
+                      <span className="coinrow" aria-label="Parsed coin values">
+                        {parsed.coins.map((c) => <span className="coin mono" key={c}>{c}</span>)}
+                        {parsed.notes.length > 0 && <span className="note-inline">{parsed.notes[0]}</span>}
+                      </span>
+                    )}
+                </div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="target-input">Target amount</label>
+                <input id="target-input" className={'input' + (parsed.errors.target ? ' bad' : '')} type="text" inputMode="numeric"
+                       autoComplete="off" value={targetText} onChange={(e) => setTargetText(e.target.value)}
+                       aria-invalid={!!parsed.errors.target} aria-describedby="target-help" placeholder="30" />
+                <div id="target-help" className="help">
+                  {parsed.errors.target && <span className="err" role="alert">{parsed.errors.target}</span>}
+                </div>
+              </div>
+
+              <div className="field">
+                <span className="flabel" id="algo-label">Algorithm</span>
+                <div className="seg algoseg" role="radiogroup" aria-labelledby="algo-label">
+                  {Object.values(ALGOS).map((a) => (
+                    <button key={a.id} type="button" role="radio" aria-checked={algo === a.id} onClick={() => chooseAlgo(a.id)}>
+                      <b>{a.short}</b><small>{a.sub}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" className="btn btn-primary btn-wide" disabled={!parsed.ok}>
+                <Icon name="bolt" />Start Search
+              </button>
+              {dirty && parsed.ok && <p className="dirty" role="status">The inputs changed. Press Start Search to apply them.</p>}
+            </form>
+
+            <div className="presets">
+              <h3 className="flabel">Presets</h3>
+              <div className="plist">
+                {PRESETS.map((p) => (
+                  <button key={p.id} type="button" className="preset" aria-pressed={activePreset && activePreset.id === p.id}
+                          onClick={() => applyPreset(p)}>
+                    <span className="pname">{p.name}</span>
+                    <span className="pdata mono">{p.coins.join(', ') + '  to  ' + p.target}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="pnote">{activePreset ? activePreset.note : 'Pick a preset to load its coins and target and watch it run, or type your own values above.'}</p>
+            </div>
+          </Card>
+        </div>
+
+        {/* ---------- graph ---------- */}
+        <div className="lg:col-span-8 min-w-0">
+          <Card className="graphcard">
+            {run && S ? (
+              <GraphPanel key={graphKey} run={run} stepIdx={Math.min(stepIdx, last)} onJump={jump} algo={viewAlgo} />
+            ) : (
+              <div>
+                <div className="card-h graph-h"><h2 className="card-t">State space graph</h2></div>
+                <div className="canvas idle">
+                  <div className="idlebox">
+                    <svg width="64" height="64" viewBox="-34 -34 68 68" aria-hidden="true">
+                      <circle r="22" className="idle-body" /><circle r="17.5" className="idle-ring" />
+                      <text y="5" textAnchor="middle" className="idle-amt">0</text>
+                    </svg>
+                    <p>The start state, amount 0, is where every search begins.</p>
+                    <p className="mini">Press Start Search or pick a preset.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="status" data-tone={status.tone} role="status" aria-live="polite">
+              <span className="dot" aria-hidden="true" />
+              <span>
+                {run && S && <span className="mono stepcount">{'Step ' + S.index + ' of ' + last + '  '}</span>}
+                {status.text}
+              </span>
+            </div>
+            <Controls run={run} stepIdx={Math.min(stepIdx, last)} playing={playing} speed={speed}
+                      onReset={reset} onBack={back} onToggle={toggle} onForward={forward} onReplay={replay}
+                      onSpeed={setSpeed} onScrub={jump} />
+          </Card>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start mt-4">
+        <div className="lg:col-span-4 min-w-0 stack">
+          <StatsCard run={run} S={S} algo={viewAlgo} />
+          <ActiveCard run={run} S={S} algo={viewAlgo} />
+        </div>
+        <div className="lg:col-span-8 min-w-0 stack">
+          <FrontierCard run={run} S={S} algo={viewAlgo} />
+          <LogCard run={run} stepIdx={Math.min(stepIdx, last)} onJump={jump} />
+        </div>
+      </div>
+
+      <div className="mt-4"><Comparison session={session} viewAlgo={viewAlgo} onWatch={watch} /></div>
+      <div className="mt-4"><Explainer session={session} /></div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+</script>
+
+<script>
+setTimeout(function () {
+  var boot = document.getElementById('boot');
+  if (boot) boot.textContent = 'The explorer could not start. Reload the page; it needs React, Babel and Tailwind to load from their CDNs.';
+}, 9000);
+</script>
+
+</body></html>
